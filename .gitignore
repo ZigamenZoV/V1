@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+
+# Артефакты рантайма (пересоздаются сервисом)
+data/
+logs/
+
+# Веса моделей и артефакты обучения (большие бинарники — вне git)
+models/
+runs/
+datasets/
+_export_tmp/
+
+# Инструменты разработки
+.claude/
+.vscode/
+.idea/

@@ -1,0 +1,48 @@
+# People Counter v2 — production-конфиг (целевая машина: GTX 1650).
+# Камеры описываются по файлу на камеру в config/cameras/.
+site: site-1
+log_dir: logs
+log_level: INFO
+
+detector:
+  backend: onnxruntime        # tensorrt после сборки engine на этой машине (§2.1)
+  model: models/rfdetr_head.onnx
+  engine: models/rfdetr_head_fp16.engine
+  input_size: 560             # кратно 56; 616/672 если головы < ~12 px (§10.3)
+  batch: 0                    # 0 = число gate-камер
+  conf_gate: 0.30             # на гейте ниже: recall важнее, мусор режут FSM и финализация (§10.2)
+  conf_audit: 0.50
+
+tracker:
+  backend: botsort            # bytetrack при CPU-узком месте (§11); simple — без torch
+  track_buffer_s: 2.0         # ≈2×FPS кадров переживания окклюзии в дверях
+  conf_high: 0.45
+  conf_low: 0.10
+  with_reid: false            # включить при видимых ID-switch при разминовениях (§4)
+
+reid:
+  enabled: true
+  model: models/osnet_x0_25.onnx
+  threshold: 0.60             # калибровать на своих данных (0.55–0.65, §6)
+  ttl_s: 86400
+
+audit:
+  enabled: false              # включить после подключения обзорных камер
+  backend: lwcc               # p2pnet после подключения весов (§7)
+  model_name: DM-Count
+  interval_s: 60
+  alpha: 0.25
+  alert_delta: 10
+
+store:
+  path: data/people_counter.db
+
+api:
+  host: 0.0.0.0
+  port: 8000
+
+pipeline:
+  mode: multiprocess
+  stale_restart_s: 10         # watchdog RTSP (§8)
+
+cameras_dir: cameras

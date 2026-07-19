@@ -1,0 +1,69 @@
+# Mock-режим: синтетическая сцена + mock-детектор + simple-трекер.
+# Проверка всего конвейера (зоны → FSM → события → леджер → API) без камер,
+# GPU и обученных весов:  python -m people_counter simulate
+site: mock-site
+log_dir: logs
+log_level: INFO
+
+detector:
+  backend: mock
+  input_size: 560
+  conf_gate: 0.30
+  mock:
+    jitter_px: 1.0
+    dropout: 0.05
+    false_pos_per_frame: 0.02
+
+tracker:
+  backend: simple             # без torch-зависимостей
+  track_buffer_s: 2.0
+  conf_high: 0.45
+  conf_low: 0.10
+
+reid:
+  enabled: false              # нет OSNet-весов в mock-режиме
+
+audit:
+  enabled: false
+
+store:
+  path: data/mock.db
+
+api:
+  host: 127.0.0.1
+  port: 8000
+
+pipeline:
+  mode: single                # весь конвейер в одном процессе — удобно для отладки
+  snapshot_interval_s: 0.5
+
+cameras:
+  - id: gate-sim
+    role: gate
+    source: synthetic
+    fps: 10
+    synthetic:
+      seed: 7
+      enters_per_min: 10
+      exits_per_min: 8
+      passby_per_min: 5
+      peek_per_min: 3
+      speed_px: 4.0
+      head_px: 18
+    # Геометрия согласована с capture/synthetic.py: дверь — вертикальная линия
+    # x=280; зона A — левая (уличная) часть, зона B — правая (внутренняя).
+    zones:
+      a:
+        - [60, 60]
+        - [275, 60]
+        - [275, 500]
+        - [60, 500]
+      b:
+        - [285, 60]
+        - [500, 60]
+        - [500, 500]
+        - [285, 500]
+    fsm:
+      k_frames: 3
+      min_track_frames: 8
+      min_path_px: 40

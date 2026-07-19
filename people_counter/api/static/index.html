@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>People Counter v2</title>
+<style>
+  :root {
+    --bg: #12151a; --panel: #1a1f27; --panel2: #222834; --text: #e8ebf0;
+    --muted: #8b94a3; --accent: #4fc3f7; --enter: #66bb6a; --exit: #ef8354;
+    --warn: #ffd54f; --err: #ef5350; --border: #2c3442;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--text);
+         font: 14px/1.45 "Segoe UI", system-ui, sans-serif; padding: 18px; }
+  h1 { font-size: 18px; font-weight: 600; letter-spacing: .3px; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+  .dot.ok { background: var(--enter); } .dot.degraded { background: var(--err); }
+  header .sub { color: var(--muted); font-size: 12px; margin-left: auto; }
+  .grid { display: grid; grid-template-columns: 300px 1fr; gap: 14px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--border);
+           border-radius: 10px; padding: 14px; }
+  .occ-num { font-size: 64px; font-weight: 700; line-height: 1; color: var(--accent); }
+  .occ-label { color: var(--muted); text-transform: uppercase; font-size: 11px;
+               letter-spacing: 1px; margin-bottom: 6px; }
+  .kv { display: flex; justify-content: space-between; padding: 5px 0;
+        border-top: 1px solid var(--border); font-size: 13px; }
+  .kv:first-of-type { border-top: none; }
+  .kv .v { font-weight: 600; }
+  .v.enter { color: var(--enter); } .v.exit { color: var(--exit); }
+  .v.warn { color: var(--warn); }
+  .cams { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+          gap: 12px; margin-bottom: 14px; }
+  .cam img { width: 100%; border-radius: 6px; background: #000; min-height: 120px; }
+  .cam .name { font-weight: 600; margin-bottom: 8px; display: flex; gap: 8px; align-items: baseline;}
+  .cam .role { color: var(--muted); font-size: 11px; text-transform: uppercase; }
+  .cam .stats { display: flex; gap: 12px; color: var(--muted); font-size: 12px; margin-top: 8px; }
+  .cam .stats b { color: var(--text); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 500; font-size: 11px;
+       text-transform: uppercase; letter-spacing: .5px; padding: 4px 8px; }
+  td { padding: 5px 8px; border-top: 1px solid var(--border); }
+  tr.enter td:nth-child(3) { color: var(--enter); font-weight: 600; }
+  tr.exit td:nth-child(3) { color: var(--exit); font-weight: 600; }
+  .badge { font-size: 10px; padding: 1px 6px; border-radius: 8px;
+           background: var(--panel2); color: var(--muted); }
+  footer { margin-top: 14px; color: var(--muted); font-size: 12px;
+           display: flex; gap: 16px; }
+  footer a { color: var(--accent); text-decoration: none; }
+  h2 { font-size: 13px; color: var(--muted); text-transform: uppercase;
+       letter-spacing: 1px; margin-bottom: 10px; font-weight: 600; }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="status-dot"></span>
+  <h1>People Counter v2</h1>
+  <span class="sub" id="sub"></span>
+</header>
+
+<div class="grid">
+  <div>
+    <div class="panel" style="margin-bottom:14px">
+      <div class="occ-label">Сейчас в здании</div>
+      <div class="occ-num" id="occ">—</div>
+      <div style="margin-top:12px">
+        <div class="kv"><span>Входов сегодня</span><span class="v enter" id="enters">—</span></div>
+        <div class="kv"><span>Выходов сегодня</span><span class="v exit" id="exits">—</span></div>
+        <div class="kv"><span>Дельта аудита</span><span class="v" id="audit-delta">—</span></div>
+        <div class="kv"><span>ReID unmatched</span><span class="v" id="unmatched">—</span></div>
+        <div class="kv"><span>Инференс</span><span class="v" id="infer">—</span></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Камеры</h2>
+      <div id="cam-list"></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="cams" id="cams"></div>
+    <div class="panel">
+      <h2>Лента событий</h2>
+      <table>
+        <thead><tr><th>Время</th><th>Камера</th><th>Событие</th><th>Conf</th><th>Occ</th></tr></thead>
+        <tbody id="events"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <span id="uptime"></span>
+  <a href="/docs">API</a>
+  <a href="/metrics">Метрики</a>
+  <a href="/events?limit=200">События (JSON)</a>
+</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt1 = v => (v == null ? "—" : (typeof v === "number" ? v.toFixed(1) : v));
+
+function setOcc(v) { if (v != null) $("occ").textContent = v; }
+
+async function refreshOccupancy() {
+  try {
+    const d = await (await fetch("/occupancy")).json();
+    setOcc(d.occupancy);
+    $("enters").textContent = d.today ? d.today.enter : d.enters_total;
+    $("exits").textContent = d.today ? d.today.exit : d.exits_total;
+    $("audit-delta").textContent = d.audit_ema == null ? "нет аудита" : fmt1(d.last_audit_delta);
+  } catch (e) {}
+}
+
+let camsInit = false;
+async function refreshHealth() {
+  try {
+    const h = await (await fetch("/health")).json();
+    $("status-dot").className = "dot " + h.status;
+    $("sub").textContent = `${h.mode} · ${h.detector.backend}`;
+    $("uptime").textContent = "аптайм " + Math.floor(h.uptime_s / 60) + " мин";
+    $("infer").textContent = h.detector.infer_fps == null ? "—"
+        : `${fmt1(h.detector.infer_fps)} т/с · ${fmt1(h.detector.batch_ms)} мс`;
+    if (h.ledger) $("unmatched").textContent = (h.ledger.unmatched_ratio * 100).toFixed(0) + "%";
+    const cams = Object.entries(h.cameras || {});
+    if (!camsInit) {
+      camsInit = true;
+      $("cams").innerHTML = cams.map(([id, c]) => `
+        <div class="panel cam" id="cam-${id}">
+          <div class="name">${id} <span class="role">${c.role}</span></div>
+          <img id="img-${id}" alt="${id}">
+          <div class="stats">
+            <span>декод <b id="dfps-${id}">—</b></span>
+            <span>трекер <b id="wfps-${id}">—</b></span>
+            <span>треков <b id="trk-${id}">—</b></span>
+          </div>
+        </div>`).join("");
+    }
+    $("cam-list").innerHTML = cams.map(([id, c]) => `
+      <div class="kv"><span>${id}</span>
+      <span class="v ${(c.decode_fps||0) > 0 ? "" : "warn"}">${fmt1(c.decode_fps)} fps</span></div>`).join("");
+    for (const [id, c] of cams) {
+      const set = (p, v) => { const el = $(p + "-" + id); if (el) el.textContent = fmt1(v); };
+      set("dfps", c.decode_fps); set("wfps", c.worker_fps); set("trk", c.active_tracks);
+    }
+  } catch (e) { $("status-dot").className = "dot"; }
+}
+
+function refreshSnapshots() {
+  document.querySelectorAll("[id^='img-']").forEach(img => {
+    const id = img.id.slice(4);
+    img.src = `/cameras/${encodeURIComponent(id)}/snapshot.jpg?t=` + Date.now();
+  });
+}
+
+function addEventRow(e) {
+  const tb = $("events");
+  const tr = document.createElement("tr");
+  tr.className = e.event || e.type;
+  const t = (e.ts || "").split("T")[1] || e.ts || "";
+  tr.innerHTML = `<td>${t}</td><td>${e.camera_id}</td>` +
+    `<td>${(e.event === "enter") ? "вход" : "выход"}${e.unmatched ? ' <span class="badge">unmatched</span>' : ""}</td>` +
+    `<td>${e.confidence ?? ""}</td><td>${e.occupancy ?? ""}</td>`;
+  tb.prepend(tr);
+  while (tb.children.length > 30) tb.removeChild(tb.lastChild);
+}
+
+async function loadRecentEvents() {
+  try {
+    const evs = await (await fetch("/events?limit=15")).json();
+    evs.reverse().forEach(e => addEventRow({ ...e, event: e.type }));
+  } catch (e) {}
+}
+
+function bumpToday(type) {
+  const el = $(type === "enter" ? "enters" : "exits");
+  const v = parseInt(el.textContent, 10);
+  if (!isNaN(v)) el.textContent = v + 1;
+}
+
+function connectSSE() {
+  const es = new EventSource("/stream");
+  es.onmessage = m => {
+    const d = JSON.parse(m.data);
+    // occupancy приходит в самом событии — обновляем локально, без refetch
+    if (d.type === "event") { addEventRow(d); setOcc(d.occupancy); bumpToday(d.event); }
+    else if (d.type === "audit") { setOcc(d.occupancy); refreshOccupancy(); }
+  };
+  es.onerror = () => { es.close(); setTimeout(connectSSE, 3000); };
+}
+
+refreshOccupancy(); refreshHealth(); loadRecentEvents(); connectSSE();
+setInterval(refreshHealth, 5000);
+setInterval(refreshSnapshots, 2000);
+setInterval(refreshOccupancy, 30000);   // редкая сверка счётчиков с сервером
+setTimeout(refreshSnapshots, 700);
+</script>
+</body>
+</html>

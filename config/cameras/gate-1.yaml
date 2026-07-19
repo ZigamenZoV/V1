@@ -1,0 +1,29 @@
+# Gate-камера входной группы №1.
+# Подключение через RTSP-прослойку (go2rtc/MediaMTX, см. deploy/go2rtc.yaml),
+# не напрямую к камере (§3). Полигоны зон — в координатах кадра инференса
+# (560×560 при detector.input_size: 560); разметка: python scripts/calibrate_zones.py
+id: gate-1
+enabled: false                # включить после подстановки URL и разметки зон
+role: gate
+source: rtsp
+url: rtsp://127.0.0.1:8554/gate1
+codec: h264
+use_nvdec: true
+fps: 10
+# roi: [420, 180, 1080, 1080] # кроп входной группы из full-HD до ресайза (§10.3)
+zones:
+  a:                          # уличная/тамбурная сторона
+    - [40, 80]
+    - [270, 80]
+    - [270, 520]
+    - [40, 520]
+  b:                          # внутренняя сторона
+    - [290, 80]
+    - [530, 80]
+    - [530, 520]
+    - [290, 520]
+fsm:
+  k_frames: 3                 # K=3 при 10 FPS (§5.1)
+  cooldown_s: 2.0
+  min_track_frames: 8
+  min_path_px: 40

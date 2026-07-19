@@ -1,0 +1,43 @@
+[project]
+name = "people-counter"
+version = "2.0.0"
+description = "People Counter v2 — счёт вход/выход/occupancy по головам (RF-DETR + BoT-SORT + zone FSM), Windows / GTX 1650"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "opencv-python>=4.9",
+    "pyyaml>=6.0",
+    "pydantic>=2.5",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "prometheus-client>=0.20",
+    "onnxruntime>=1.17",
+]
+
+[project.optional-dependencies]
+# Трекинг BoT-SORT/ByteTrack (тянет torch — ставить на целевой машине)
+track = ["boxmot>=10.0"]
+# GPU-инференс на целевой машине (TensorRT ставится из дистрибутива NVIDIA,
+# onnxruntime-gpu — резервный путь)
+gpu = ["onnxruntime-gpu>=1.17", "cuda-python>=12.0"]
+# Обучение/экспорт RF-DETR и OSNet (арендованный GPU / Colab)
+train = ["rfdetr>=1.0", "torchreid", "onnx", "onnxsim"]
+# Аудит occupancy (LWCC как быстрый старт; тянет torch)
+audit = ["lwcc"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+people-counter = "people_counter.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["people_counter*"]
+
+[tool.setuptools.package-data]
+"people_counter.api" = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
